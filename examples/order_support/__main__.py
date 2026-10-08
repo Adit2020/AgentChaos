@@ -9,7 +9,8 @@ from rich.console import Console
 from rich.table import Table
 
 from agentchaos.adapters.openai_agents import OpenAIAgentsAdapter
-from agentchaos.models import FaultSpec
+from agentchaos.experiments import ExperimentOutcome, ExperimentRunner
+from agentchaos.models import AgentRun, Experiment, FaultSpec
 from agentchaos.tracing import TraceRecorder
 
 ORDERS = {
@@ -23,6 +24,76 @@ def get_order_status(order_id: str) -> str:
     """Return the local status of an order by its ID."""
 
     return ORDERS.get(order_id, "order not found")
+
+
+def order_answer_is_correct(run: AgentRun) -> bool:
+    """Check the expected local status and arrival day without a model judge."""
+
+    answer = run.output
+    return (
+        isinstance(answer, str)
+        and "shipped" in answer.lower()
+        and "friday" in answer.lower()
+    )
+
+
+def show_comparison(console: Console, outcome: ExperimentOutcome) -> None:
+    result = outcome.comparison
+
+    def verdict(value: bool | None) -> str:
+        return "unknown" if value is None else str(value).lower()
+
+    console.print(f"Baseline answer: {outcome.baseline.output}")
+    console.print(f"Faulted answer: {outcome.faulted.output}")
+    table = Table(title="AgentChaos comparison")
+    table.add_column("Metric")
+    table.add_column("Baseline")
+    table.add_column("Faulted")
+    table.add_column("Delta")
+    rows = [
+        ("Run status", outcome.baseline.status.value, outcome.faulted.status.value, ""),
+        (
+            "Task success",
+            verdict(result.baseline_task_success),
+            verdict(result.faulted_task_success),
+            "",
+        ),
+        (
+            "Model calls",
+            str(result.baseline_model_calls),
+            str(result.faulted_model_calls),
+            f"{result.model_call_delta:+d}",
+        ),
+        (
+            "Tool calls",
+            str(result.baseline_tool_calls),
+            str(result.faulted_tool_calls),
+            f"{result.tool_call_delta:+d}",
+        ),
+        (
+            "Injected failures",
+            str(result.baseline_injected_failures),
+            str(result.faulted_injected_failures),
+            "",
+        ),
+        (
+            "Duration (ms)",
+            str(result.baseline_duration_ms),
+            str(result.faulted_duration_ms),
+            (
+                f"{result.duration_delta_ms:+d}"
+                if result.duration_delta_ms is not None
+                else "unknown"
+            ),
+        ),
+        ("Fault fired", "", verdict(result.fault_triggered), ""),
+        ("Continued after fault", "", verdict(result.continued_after_fault), ""),
+        ("Target tool retries", "", str(result.target_tool_retries), ""),
+        ("Recovered", "", verdict(result.recovered), ""),
+    ]
+    for row in rows:
+        table.add_row(*row)
+    console.print(table)
 
 
 async def main() -> None:
@@ -40,18 +111,39 @@ async def main() -> None:
         tools=[function_tool(get_order_status)],
     )
     adapter = OpenAIAgentsAdapter(agent)
+    task = "Where is order 123?"
+    console = Console()
+    if os.environ.get("AGENTCHAOS_COMPARE") == "1":
+        experiment = Experiment(
+            experiment_id=uuid4().hex,
+            baseline_run_id=uuid4().hex,
+            task=task,
+            fault=FaultSpec(
+                fault_type="tool_error",
+                target_tool="get_order_status",
+                occurrence=1,
+                error_message="Temporary order lookup failure. Please retry once.",
+            ),
+        )
+        outcome = await ExperimentRunner().run(
+            adapter=adapter, experiment=experiment, evaluator=order_answer_is_correct
+        )
+        show_comparison(console, outcome)
+        return
+
     recorder = TraceRecorder(run_id=uuid4().hex)
-    fault = None
-    if os.environ.get("AGENTCHAOS_FAULT") == "tool_error":
-        fault = FaultSpec(
+    fault = (
+        FaultSpec(
             fault_type="tool_error",
             target_tool="get_order_status",
             occurrence=1,
             error_message="Temporary order lookup failure. Please retry once.",
         )
-    run = await adapter.run("Where is order 123?", recorder=recorder, fault=fault)
+        if os.environ.get("AGENTCHAOS_FAULT") == "tool_error"
+        else None
+    )
+    run = await adapter.run(task, recorder=recorder, fault=fault)
 
-    console = Console()
     console.print(f"Answer: {run.output}")
     table = Table(title="AgentChaos trace")
     table.add_column("#", justify="right")

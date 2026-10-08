@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from agentchaos.models import AgentRun
+from agentchaos.models import AgentRun, FaultSpec
 from agentchaos.tracing import TraceRecorder
 
 
@@ -14,3 +14,11 @@ class AgentAdapter(Protocol):
     """
 
     async def run(self, task: str, *, recorder: TraceRecorder) -> AgentRun: ...
+
+
+class FaultCapableAdapter(Protocol):
+    """An adapter that also accepts one optional per-run fault."""
+
+    async def run(
+        self, task: str, *, recorder: TraceRecorder, fault: FaultSpec | None = None
+    ) -> AgentRun: ...

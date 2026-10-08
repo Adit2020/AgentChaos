@@ -30,3 +30,7 @@ uv run python -m examples.order_support
 ```
 
 For the first tool-error experiment, run `AGENTCHAOS_FAULT=tool_error uv run python -m examples.order_support` after setting `OPENAI_API_KEY`. AgentChaos wraps a per-run copy of the function tool, so the application tool code and original agent remain unchanged. The injected error is returned to the model as a tool result, allowing it to decide whether to retry.
+
+To run an automatic baseline and faulted comparison, use `AGENTCHAOS_COMPARE=1 uv run python -m examples.order_support`. The example evaluates both final answers with a deterministic status check, then reports whether the fault fired, whether the task passed, and the extra calls and time. Recovery remains unknown when the answer or trace does not provide enough evidence.
+
+Programmatic comparisons accept either an exact `expected_output` or a synchronous `evaluator` callback on each `AgentRun`. Call counts represent attempted model and tool calls, including calls whose terminal event is missing.

@@ -120,6 +120,7 @@ class Experiment(DomainModel):
     baseline_run_id: str = Field(min_length=1)
     fault: FaultSpec
     faulted_run_id: str | None = None
+    task: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def check_run_ids(self) -> "Experiment":
@@ -132,16 +133,30 @@ class ComparisonResult(DomainModel):
     """Outcome and recovery cost of comparing two completed runs.
 
     Count deltas and duration delta are faulted minus baseline, so negative
-    values represent a faulted run that used fewer calls or less time.
+    values represent a faulted run that used fewer calls or less time. A
+    missing duration or unknown recovery is represented by None.
     """
 
     experiment_id: str = Field(min_length=1)
     baseline_run_id: str = Field(min_length=1)
     faulted_run_id: str = Field(min_length=1)
-    recovered: bool
+    recovered: bool | None
     model_call_delta: int
     tool_call_delta: int
-    duration_delta_ms: int
+    duration_delta_ms: int | None
+    baseline_model_calls: int = Field(default=0, ge=0)
+    faulted_model_calls: int = Field(default=0, ge=0)
+    baseline_tool_calls: int = Field(default=0, ge=0)
+    faulted_tool_calls: int = Field(default=0, ge=0)
+    baseline_injected_failures: int = Field(default=0, ge=0)
+    faulted_injected_failures: int = Field(default=0, ge=0)
+    fault_triggered: bool = False
+    baseline_duration_ms: int | None = Field(default=None, ge=0)
+    faulted_duration_ms: int | None = Field(default=None, ge=0)
+    baseline_task_success: bool | None = None
+    faulted_task_success: bool | None = None
+    continued_after_fault: bool = False
+    target_tool_retries: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def check_run_ids(self) -> "ComparisonResult":
