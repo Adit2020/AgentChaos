@@ -92,8 +92,8 @@ class FaultSpec(DomainModel):
     """A planned fault at a baseline event or a named tool occurrence.
 
     ``target_event_id`` retains the original trace-targeting contract. The
-    deterministic ``tool_error`` fault instead uses ``target_tool``,
-    ``occurrence``, and ``error_message``.
+    deterministic tool faults instead use ``target_tool`` and ``occurrence``.
+    ``parameters`` supplies timeout_ms or the malformed payload.
     """
 
     fault_type: str = Field(min_length=1)
@@ -105,9 +105,29 @@ class FaultSpec(DomainModel):
 
     @model_validator(mode="after")
     def check_target(self) -> "FaultSpec":
-        if self.fault_type == "tool_error":
-            if self.target_tool is None or self.error_message is None:
-                raise ValueError("tool_error requires target_tool and error_message")
+        if self.fault_type in {
+            "tool_error",
+            "tool_timeout",
+            "malformed_tool_output",
+        }:
+            if self.target_tool is None:
+                if (
+                    self.fault_type == "tool_timeout"
+                    and self.target_event_id is not None
+                ):
+                    # Preserve the original trace-targeting model contract.
+                    return self
+                raise ValueError("tool faults require target_tool")
+            if self.fault_type == "tool_error" and self.error_message is None:
+                raise ValueError("tool_error requires error_message")
+            if self.fault_type == "tool_timeout":
+                timeout_ms = self.parameters.get("timeout_ms", 10)
+                if type(timeout_ms) is not int or not 0 <= timeout_ms <= 250:
+                    raise ValueError("timeout_ms must be an integer from 0 to 250")
+            if self.fault_type == "malformed_tool_output":
+                payload = self.parameters.get("payload")
+                if not isinstance(payload, str) or not payload:
+                    raise ValueError("malformed_tool_output requires a string payload")
         elif self.target_event_id is None:
             raise ValueError("non-tool faults require target_event_id")
         return self

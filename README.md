@@ -6,7 +6,7 @@ The intended workflow is to run an agent normally and record a normalized **base
 
 This early version contains framework-neutral domain models, an async adapter contract, and a single-run trace recorder. The first real adapter observes OpenAI Agents SDK runs through per-run hooks and produces normalized `AgentRun` objects.
 
-AgentChaos can now inject one deterministic local function-tool error per run. It does not yet include other faults or run comparison logic.
+AgentChaos supports one deterministic local tool fault per run: `tool_error`, `tool_timeout`, or `malformed_tool_output`. It can compare one baseline and one faulted run; campaigns and aggregate statistics are not part of this early version.
 
 ## Development
 
@@ -29,8 +29,10 @@ export OPENAI_API_KEY="your-api-key"
 uv run python -m examples.order_support
 ```
 
-For the first tool-error experiment, run `AGENTCHAOS_FAULT=tool_error uv run python -m examples.order_support` after setting `OPENAI_API_KEY`. AgentChaos wraps a per-run copy of the function tool, so the application tool code and original agent remain unchanged. The injected error is returned to the model as a tool result, allowing it to decide whether to retry.
+Select a fault-only run with `AGENTCHAOS_FAULT=tool_error`, `AGENTCHAOS_FAULT=tool_timeout`, or `AGENTCHAOS_FAULT=malformed_tool_output` before `uv run python -m examples.order_support`. AgentChaos wraps a per-run copy of the function tool, so the application tool code and original agent remain unchanged.
 
-To run an automatic baseline and faulted comparison, use `AGENTCHAOS_COMPARE=1 uv run python -m examples.order_support`. The example evaluates both final answers with a deterministic status check, then reports whether the fault fired, whether the task passed, and the extra calls and time. Recovery remains unknown when the answer or trace does not provide enough evidence.
+To run an automatic baseline and faulted comparison, use `AGENTCHAOS_COMPARE=1 uv run python -m examples.order_support`. Add `AGENTCHAOS_FAULT=tool_timeout` or `AGENTCHAOS_FAULT=malformed_tool_output` to select either new fault; the comparison default remains `tool_error`. The example evaluates both final answers with a deterministic status check, then reports whether the fault fired, whether the task passed, and the extra calls and time.
+
+`tool_timeout` is a bounded, simulated tool-boundary timeout rather than a real network or socket timeout. Set `AGENTCHAOS_TIMEOUT_MS` to an integer from 0 to 250 (default 10). The malformed mode uses a JSON-returning local tool whose expected output is an object with string `order_id` and `status`, and string or null `arrival_day`; set `AGENTCHAOS_MALFORMED_PAYLOAD` to choose the injected string. A delivered malformed result proves injection, not that the agent recognized it. Recovery remains unknown without task success and a post-fault retry.
 
 Programmatic comparisons accept either an exact `expected_output` or a synchronous `evaluator` callback on each `AgentRun`. Call counts represent attempted model and tool calls, including calls whose terminal event is missing.

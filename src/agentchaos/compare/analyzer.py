@@ -78,6 +78,11 @@ def _injected_failures(run: AgentRun) -> list[tuple[RunEvent, RunEvent]]:
         if event.attributes.get("injected") is not True:
             continue
         if (
+            event.kind == EventKind.TOOL_ERROR
+            and event.attributes.get("delivery_confirmed") is False
+        ):
+            continue
+        if (
             event.kind == EventKind.TOOL_RESULT
             and event.attributes.get("success") is not False
         ):
@@ -123,8 +128,12 @@ def compare_runs(
 
     if evaluator is not None and expected_output is not _UNSET:
         raise ValueError("provide either expected_output or evaluator")
-    if experiment.fault.fault_type != "tool_error":
-        raise ValueError("only tool_error comparisons are supported")
+    if experiment.fault.fault_type not in {
+        "tool_error",
+        "tool_timeout",
+        "malformed_tool_output",
+    }:
+        raise ValueError("unsupported fault type for comparison")
     if baseline.run_id != experiment.baseline_run_id:
         raise ValueError("baseline run ID does not match experiment")
     if experiment.faulted_run_id and faulted.run_id != experiment.faulted_run_id:
@@ -208,7 +217,11 @@ def compare_runs(
     ):
         if faulted_success is False:
             recovered = False
-        elif faulted_success is True and continued:
+        elif (
+            faulted_success is True
+            and continued
+            and (experiment.fault.fault_type != "malformed_tool_output" or retries > 0)
+        ):
             recovered = True
 
     baseline_duration = _duration_ms(baseline)

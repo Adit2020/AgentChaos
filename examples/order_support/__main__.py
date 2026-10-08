@@ -5,6 +5,7 @@ import os
 from uuid import uuid4
 
 from agents import Agent, function_tool
+from pydantic import BaseModel, ConfigDict
 from rich.console import Console
 from rich.table import Table
 
@@ -20,10 +21,66 @@ ORDERS = {
 }
 
 
+class OrderStatusRecord(BaseModel):
+    """Expected JSON tool output: order_id, status, and nullable arrival_day."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: str
+    status: str
+    arrival_day: str | None
+
+
 def get_order_status(order_id: str) -> str:
     """Return the local status of an order by its ID."""
 
     return ORDERS.get(order_id, "order not found")
+
+
+def get_order_status_json(order_id: str) -> str:
+    """Return JSON matching OrderStatusRecord, with no extra fields."""
+
+    status, separator, arrival_day = ORDERS.get(order_id, "order not found").partition(
+        ", arriving "
+    )
+    return OrderStatusRecord(
+        order_id=order_id,
+        status=status,
+        arrival_day=arrival_day if separator else None,
+    ).model_dump_json()
+
+
+def selected_fault(kind: str, target_tool: str) -> FaultSpec:
+    if kind == "tool_error":
+        return FaultSpec(
+            fault_type=kind,
+            target_tool=target_tool,
+            occurrence=1,
+            error_message="Temporary order lookup failure. Please retry once.",
+        )
+    if kind == "tool_timeout":
+        return FaultSpec(
+            fault_type=kind,
+            target_tool=target_tool,
+            occurrence=1,
+            error_message="Order lookup timed out. Please retry once.",
+            parameters={
+                "timeout_ms": int(os.environ.get("AGENTCHAOS_TIMEOUT_MS", "10"))
+            },
+        )
+    if kind == "malformed_tool_output":
+        return FaultSpec(
+            fault_type=kind,
+            target_tool=target_tool,
+            occurrence=1,
+            parameters={
+                "payload": os.environ.get(
+                    "AGENTCHAOS_MALFORMED_PAYLOAD",
+                    '{"order_id":"123","status":',
+                )
+            },
+        )
+    raise ValueError(f"unsupported example fault: {kind}")
 
 
 def order_answer_is_correct(run: AgentRun) -> bool:
@@ -100,30 +157,39 @@ async def main() -> None:
     if not os.environ.get("OPENAI_API_KEY"):
         raise SystemExit("Set OPENAI_API_KEY before running this example.")
 
+    compare = os.environ.get("AGENTCHAOS_COMPARE") == "1"
+    fault_kind = os.environ.get("AGENTCHAOS_FAULT") or (
+        "tool_error" if compare else None
+    )
+    use_json_tool = fault_kind == "malformed_tool_output"
+    target_tool = "get_order_status_json" if use_json_tool else "get_order_status"
     agent = Agent(
         name="Order support",
         instructions=(
-            "Help customers check order status. Always use get_order_status for "
+            f"Help customers check order status. Always use {target_tool} for "
             "an order lookup, then answer briefly using only the returned status. "
-            "If the tool reports a temporary failure, you may retry it once."
+            + (
+                "The tool returns JSON matching OrderStatusRecord: order_id and "
+                "status are strings, arrival_day is a string or null. If the "
+                "response is not valid JSON matching that shape, you may retry once."
+                if use_json_tool
+                else "If the tool reports a temporary failure, you may retry it once."
+            )
         ),
         model=os.environ.get("AGENTCHAOS_MODEL") or None,
-        tools=[function_tool(get_order_status)],
+        tools=[
+            function_tool(get_order_status_json if use_json_tool else get_order_status)
+        ],
     )
     adapter = OpenAIAgentsAdapter(agent)
     task = "Where is order 123?"
     console = Console()
-    if os.environ.get("AGENTCHAOS_COMPARE") == "1":
+    if compare:
         experiment = Experiment(
             experiment_id=uuid4().hex,
             baseline_run_id=uuid4().hex,
             task=task,
-            fault=FaultSpec(
-                fault_type="tool_error",
-                target_tool="get_order_status",
-                occurrence=1,
-                error_message="Temporary order lookup failure. Please retry once.",
-            ),
+            fault=selected_fault(fault_kind, target_tool),
         )
         outcome = await ExperimentRunner().run(
             adapter=adapter, experiment=experiment, evaluator=order_answer_is_correct
@@ -132,16 +198,7 @@ async def main() -> None:
         return
 
     recorder = TraceRecorder(run_id=uuid4().hex)
-    fault = (
-        FaultSpec(
-            fault_type="tool_error",
-            target_tool="get_order_status",
-            occurrence=1,
-            error_message="Temporary order lookup failure. Please retry once.",
-        )
-        if os.environ.get("AGENTCHAOS_FAULT") == "tool_error"
-        else None
-    )
+    fault = selected_fault(fault_kind, target_tool) if fault_kind else None
     run = await adapter.run(task, recorder=recorder, fault=fault)
 
     console.print(f"Answer: {run.output}")

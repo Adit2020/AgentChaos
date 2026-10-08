@@ -71,8 +71,8 @@ def _faulted_agent(
             continue
         if tool.name == fault.target_tool and tool.output_json_schema is not None:
             raise ValueError(
-                "tool_error currently supports FunctionTools without a structured "
-                "output schema"
+                "injected tool faults currently support FunctionTools without a "
+                "structured output schema"
             )
         copied_tool = copy.copy(tool)
         if tool.name == fault.target_tool:
@@ -88,8 +88,16 @@ def _faulted_agent(
             ) -> Any:
                 match = matcher.match_tool(_name)
                 if match is not None:
+                    if match.fault_type == "tool_timeout":
+                        # This is a bounded, cancellable tool-boundary simulation.
+                        await asyncio.sleep(match.timeout_ms / 1000)
+                    output = (
+                        match.payload
+                        if match.fault_type == "malformed_tool_output"
+                        else match.error_message
+                    )
                     injected.mark(context, match)
-                    return match.error_message
+                    return output
                 return await _original(context, arguments)
 
             copied_tool.on_invoke_tool = invoke
@@ -186,6 +194,10 @@ class _RecorderHooks(RunHooks[Any]):
                 target_tool=match.target_tool,
                 occurrence=match.occurrence,
             )
+            if match.fault_type == "tool_timeout":
+                attributes.update(timeout_simulated=True, timeout_ms=match.timeout_ms)
+            elif match.fault_type == "malformed_tool_output":
+                attributes.update(malformed_output_delivered=True)
         self._recorder.record_tool_result(call_id=call_id, attributes=attributes)
         self._active_tool_calls.pop(call_id, None)
 
@@ -211,6 +223,7 @@ class _RecorderHooks(RunHooks[Any]):
                     fault_kind=match.fault_type,
                     target_tool=match.target_tool,
                     occurrence=match.occurrence,
+                    delivery_confirmed=False,
                 )
             self._recorder.record_tool_error(call_id=call_id, attributes=attributes)
         self._active_tool_calls.clear()

@@ -153,6 +153,74 @@ def test_completed_incorrect_answer_is_not_task_success() -> None:
     assert result.recovered is False
 
 
+def test_malformed_delivery_without_retry_is_not_confirmed_recovery() -> None:
+    plan = experiment().model_copy(
+        update={
+            "fault": FaultSpec(
+                fault_type="malformed_tool_output",
+                target_tool="get_order_status",
+                parameters={"payload": "{broken-json"},
+            )
+        }
+    )
+    faulted = traced_run("faulted-1", injected=True)
+    events = [
+        event.model_copy(
+            update={
+                "attributes": {
+                    **event.attributes,
+                    "fault_kind": "malformed_tool_output",
+                    "malformed_output_delivered": True,
+                }
+            }
+        )
+        if event.attributes.get("injected") is True
+        else event
+        for event in faulted.events
+    ]
+    faulted = faulted.model_copy(update={"events": events})
+
+    result = compare_runs(
+        plan, traced_run("baseline-1"), faulted, expected_output=ANSWER
+    )
+
+    assert result.fault_triggered is True
+    assert result.continued_after_fault is True
+    assert result.faulted_task_success is True
+    assert result.target_tool_retries == 0
+    assert result.recovered is None
+
+
+def test_unconfirmed_injected_tool_error_is_not_a_triggered_fault() -> None:
+    faulted = traced_run("faulted-1", injected=True)
+    events = [
+        event.model_copy(
+            update={
+                "kind": EventKind.TOOL_ERROR,
+                "attributes": {
+                    **event.attributes,
+                    "delivery_confirmed": False,
+                },
+            }
+        )
+        if event.kind == EventKind.TOOL_RESULT
+        else event
+        for event in faulted.events
+    ]
+    interrupted = faulted.model_copy(update={"events": events})
+
+    result = compare_runs(
+        experiment(),
+        traced_run("baseline-1"),
+        interrupted,
+        expected_output=ANSWER,
+    )
+
+    assert result.faulted_injected_failures == 0
+    assert result.fault_triggered is False
+    assert result.recovered is None
+
+
 def test_no_evaluator_and_missing_trigger_remain_unknown() -> None:
     baseline = traced_run("baseline-1")
     faulted = traced_run("faulted-1")
