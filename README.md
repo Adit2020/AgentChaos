@@ -6,7 +6,7 @@ The intended workflow is to run an agent normally and record a normalized **base
 
 This early version contains framework-neutral domain models, an async adapter contract, and a single-run trace recorder. The first real adapter observes OpenAI Agents SDK runs through per-run hooks and produces normalized `AgentRun` objects.
 
-AgentChaos does not yet include fault injection or run comparison logic.
+AgentChaos can now inject one deterministic local function-tool error per run. It does not yet include other faults or run comparison logic.
 
 ## Development
 
@@ -28,3 +28,5 @@ export OPENAI_API_KEY="your-api-key"
 # Optional: export AGENTCHAOS_MODEL="a-model-you-can-access"
 uv run python -m examples.order_support
 ```
+
+For the first tool-error experiment, run `AGENTCHAOS_FAULT=tool_error uv run python -m examples.order_support` after setting `OPENAI_API_KEY`. AgentChaos wraps a per-run copy of the function tool, so the application tool code and original agent remain unchanged. The injected error is returned to the model as a tool result, allowing it to decide whether to retry.

@@ -1,3 +1,3 @@
 # Order support example
 
-Run `uv run python -m examples.order_support` from the project root after setting `OPENAI_API_KEY`. The local `get_order_status` tool reads a hard-coded order dataset; the agent's model call uses the OpenAI Agents SDK.
+Set `OPENAI_API_KEY`, then run `uv run python -m examples.order_support` from the project root. To inject one recoverable error into the first order lookup, run `AGENTCHAOS_FAULT=tool_error uv run python -m examples.order_support` instead. The local order dataset never calls an external order API.

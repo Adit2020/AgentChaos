@@ -1,16 +1,20 @@
 """Observe an OpenAI Agents SDK run through per-run lifecycle hooks."""
 
 import asyncio
+import copy
 from collections import defaultdict
+from collections.abc import Callable
+from functools import wraps
 from typing import Any
 
 from agents import Agent, RunConfig, RunHooks, Runner
 from agents.items import ModelResponse, TResponseInputItem
 from agents.run_context import RunContextWrapper
-from agents.tool import Tool
+from agents.tool import FunctionTool, Tool
 from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 
-from agentchaos.models import AgentRun, RunStatus
+from agentchaos.faults import FaultMatch, FaultMatcher
+from agentchaos.models import AgentRun, FaultSpec, RunStatus
 from agentchaos.tracing import TraceRecorder
 
 _JSON_VALUE = TypeAdapter(JsonValue)
@@ -27,11 +31,80 @@ def _portable_output(value: Any) -> JsonValue:
         return None
 
 
+class _InjectedCalls:
+    """Share per-run fault observations between invokers and lifecycle hooks."""
+
+    def __init__(self) -> None:
+        self._by_call_id: dict[str, FaultMatch] = {}
+        self._without_call_id: dict[str, list[FaultMatch]] = defaultdict(list)
+
+    def mark(self, context: Any, match: FaultMatch) -> None:
+        call_id = getattr(context, "tool_call_id", None)
+        if isinstance(call_id, str) and call_id:
+            self._by_call_id[call_id] = match
+        else:
+            self._without_call_id[match.target_tool].append(match)
+
+    def take(self, call_id: str, tool_name: str) -> FaultMatch | None:
+        match = self._by_call_id.pop(call_id, None)
+        if match is not None:
+            return match
+        pending = self._without_call_id.get(tool_name)
+        return pending.pop(0) if pending else None
+
+
+def _faulted_agent(
+    agent: Agent[Any], matcher: FaultMatcher, injected: _InjectedCalls, fault: FaultSpec
+) -> Agent[Any]:
+    """Clone the agent and its FunctionTools without changing shared objects."""
+
+    if not any(
+        isinstance(tool, FunctionTool) and tool.name == fault.target_tool
+        for tool in agent.tools
+    ):
+        raise ValueError(f"no local FunctionTool named {fault.target_tool!r}")
+
+    copied_tools: list[Tool] = []
+    for tool in agent.tools:
+        if not isinstance(tool, FunctionTool):
+            copied_tools.append(tool)
+            continue
+        if tool.name == fault.target_tool and tool.output_json_schema is not None:
+            raise ValueError(
+                "tool_error currently supports FunctionTools without a structured "
+                "output schema"
+            )
+        copied_tool = copy.copy(tool)
+        if tool.name == fault.target_tool:
+            original_invoke = copied_tool.on_invoke_tool
+
+            @wraps(original_invoke, updated=())
+            async def invoke(
+                context: Any,
+                arguments: str,
+                *,
+                _name: str = tool.name,
+                _original: Callable[..., Any] = original_invoke,
+            ) -> Any:
+                match = matcher.match_tool(_name)
+                if match is not None:
+                    injected.mark(context, match)
+                    return match.error_message
+                return await _original(context, arguments)
+
+            copied_tool.on_invoke_tool = invoke
+        copied_tools.append(copied_tool)
+    return agent.clone(tools=copied_tools)
+
+
 class _RecorderHooks(RunHooks[Any]):
     """Translate one SDK run's callbacks into one AgentChaos recorder."""
 
-    def __init__(self, recorder: TraceRecorder) -> None:
+    def __init__(
+        self, recorder: TraceRecorder, injected: _InjectedCalls | None = None
+    ) -> None:
         self._recorder = recorder
+        self._injected = injected
         self._next_model_call = 0
         self._next_tool_call = 0
         self._active_model_calls: list[str] = []
@@ -98,9 +171,22 @@ class _RecorderHooks(RunHooks[Any]):
             call_id = sdk_call_id
         else:
             call_id = self._fallback_tool_calls[id(context), id(tool)].pop()
-        self._recorder.record_tool_result(
-            call_id=call_id, attributes={"result_type": type(result).__name__}
+        match = (
+            self._injected.take(call_id, tool.name)
+            if self._injected is not None
+            else None
         )
+        attributes: dict[str, JsonValue] = {"result_type": type(result).__name__}
+        if self._injected is not None:
+            attributes["injected"] = match is not None
+        if match is not None:
+            attributes.update(
+                success=False,
+                fault_kind=match.fault_type,
+                target_tool=match.target_tool,
+                occurrence=match.occurrence,
+            )
+        self._recorder.record_tool_result(call_id=call_id, attributes=attributes)
         self._active_tool_calls.pop(call_id, None)
 
     def close_open_calls(self, error_type: str) -> None:
@@ -111,10 +197,22 @@ class _RecorderHooks(RunHooks[Any]):
                 call_id=self._active_model_calls.pop(),
                 attributes={"error_type": error_type},
             )
-        for call_id in self._active_tool_calls:
-            self._recorder.record_tool_error(
-                call_id=call_id, attributes={"error_type": error_type}
+        for call_id, tool_name in self._active_tool_calls.items():
+            match = (
+                self._injected.take(call_id, tool_name)
+                if self._injected is not None
+                else None
             )
+            attributes: dict[str, JsonValue] = {"error_type": error_type}
+            if self._injected is not None:
+                attributes["injected"] = match is not None
+            if match is not None:
+                attributes.update(
+                    fault_kind=match.fault_type,
+                    target_tool=match.target_tool,
+                    occurrence=match.occurrence,
+                )
+            self._recorder.record_tool_error(call_id=call_id, attributes=attributes)
         self._active_tool_calls.clear()
 
 
@@ -128,12 +226,19 @@ class OpenAIAgentsAdapter:
     def __init__(self, agent: Agent[Any]) -> None:
         self._agent = agent
 
-    async def run(self, task: str, *, recorder: TraceRecorder) -> AgentRun:
+    async def run(
+        self, task: str, *, recorder: TraceRecorder, fault: FaultSpec | None = None
+    ) -> AgentRun:
+        injected = None
+        agent = self._agent
+        if fault is not None:
+            injected = _InjectedCalls()
+            agent = _faulted_agent(agent, FaultMatcher(fault), injected, fault)
         recorder.start(task=task, adapter="openai_agents")
-        hooks = _RecorderHooks(recorder)
+        hooks = _RecorderHooks(recorder, injected)
         try:
             result = await Runner.run(
-                self._agent,
+                agent,
                 task,
                 hooks=hooks,
                 run_config=RunConfig(tracing_disabled=True),

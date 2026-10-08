@@ -89,14 +89,28 @@ class AgentRun(DomainModel):
 
 
 class FaultSpec(DomainModel):
-    """A planned fault at an event observed in the baseline run.
+    """A planned fault at a baseline event or a named tool occurrence.
 
-    ``fault_type`` and ``parameters`` remain generic until injectors are defined.
+    ``target_event_id`` retains the original trace-targeting contract. The
+    deterministic ``tool_error`` fault instead uses ``target_tool``,
+    ``occurrence``, and ``error_message``.
     """
 
-    target_event_id: str = Field(min_length=1)
     fault_type: str = Field(min_length=1)
+    target_event_id: str | None = Field(default=None, min_length=1)
+    target_tool: str | None = Field(default=None, min_length=1)
+    occurrence: int = Field(default=1, ge=1)
+    error_message: str | None = Field(default=None, min_length=1)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def check_target(self) -> "FaultSpec":
+        if self.fault_type == "tool_error":
+            if self.target_tool is None or self.error_message is None:
+                raise ValueError("tool_error requires target_tool and error_message")
+        elif self.target_event_id is None:
+            raise ValueError("non-tool faults require target_event_id")
+        return self
 
 
 class Experiment(DomainModel):
