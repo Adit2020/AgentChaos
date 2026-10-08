@@ -4,7 +4,9 @@ AgentChaos is an early v0 Python framework for trace-driven reliability testing 
 
 The intended workflow is to run an agent normally and record a normalized **baseline** trace, rerun the same task with a controlled failure at a model or tool boundary, then **compare** the runs to see whether the agent recovered and what recovery cost it incurred.
 
-This first version contains only framework-neutral domain models. It does not run agents, call model APIs, inject faults, or compare traces yet.
+This early version contains framework-neutral domain models, an async adapter contract, and a single-run trace recorder. The first real adapter observes OpenAI Agents SDK runs through per-run hooks and produces normalized `AgentRun` objects.
+
+AgentChaos does not yet include fault injection or run comparison logic.
 
 ## Development
 
@@ -14,4 +16,15 @@ Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required.
 uv sync
 uv run ruff check .
 uv run pytest
+```
+
+## First example
+
+The order-support example uses a local, hard-coded order lookup tool and makes a live model call.
+
+```sh
+uv sync
+export OPENAI_API_KEY="your-api-key"
+# Optional: export AGENTCHAOS_MODEL="a-model-you-can-access"
+uv run python -m examples.order_support
 ```

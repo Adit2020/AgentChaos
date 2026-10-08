@@ -24,6 +24,7 @@ class EventKind(StrEnum):
     RUN_STARTED = "run.started"
     RUN_COMPLETED = "run.completed"
     RUN_FAILED = "run.failed"
+    RUN_CANCELLED = "run.cancelled"
     MODEL_REQUEST = "model.request"
     MODEL_RESPONSE = "model.response"
     MODEL_ERROR = "model.error"
