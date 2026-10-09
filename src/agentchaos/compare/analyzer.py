@@ -112,6 +112,40 @@ def _post_fault_model_responses(run: AgentRun, failure: RunEvent) -> list[int]:
     ]
 
 
+def _completed_post_fault_tools(
+    run: AgentRun, response_sequences: list[int]
+) -> list[RunEvent]:
+    """Find successful tool results paired with calls after model continuation."""
+
+    calls: dict[str, RunEvent] = {}
+    duplicates: set[str] = set()
+    for event in run.events:
+        if event.kind != EventKind.TOOL_CALL or not event.call_id:
+            continue
+        if event.call_id in calls:
+            duplicates.add(event.call_id)
+        else:
+            calls[event.call_id] = event
+    terminals: dict[str, list[RunEvent]] = {}
+    for event in run.events:
+        if (
+            event.kind in {EventKind.TOOL_RESULT, EventKind.TOOL_ERROR}
+            and event.call_id
+        ):
+            terminals.setdefault(event.call_id, []).append(event)
+    return [
+        call
+        for call_id, call in calls.items()
+        if call_id not in duplicates
+        and any(sequence < call.sequence for sequence in response_sequences)
+        and len(terminals.get(call_id, [])) == 1
+        and terminals[call_id][0].kind == EventKind.TOOL_RESULT
+        and terminals[call_id][0].sequence > call.sequence
+        and terminals[call_id][0].attributes.get("injected") is not True
+        and terminals[call_id][0].attributes.get("success") is not False
+    ]
+
+
 def compare_runs(
     experiment: Experiment,
     baseline: AgentRun,
@@ -205,6 +239,14 @@ def compare_runs(
         if target_failure is not None
         else 0
     )
+    completed_tools = _completed_post_fault_tools(faulted, post_fault_responses)
+    successful_retries = sum(
+        call.name == experiment.fault.target_tool for call in completed_tools
+    )
+    alternative_tool_calls = sum(
+        call.name is not None and call.name != experiment.fault.target_tool
+        for call in completed_tools
+    )
     baseline_success = _task_success(baseline, expected_output, evaluator)
     faulted_success = _task_success(faulted, expected_output, evaluator)
     recovered: bool | None = None
@@ -217,11 +259,7 @@ def compare_runs(
     ):
         if faulted_success is False:
             recovered = False
-        elif (
-            faulted_success is True
-            and continued
-            and (experiment.fault.fault_type != "malformed_tool_output" or retries > 0)
-        ):
+        elif faulted_success is True and continued and successful_retries > 0:
             recovered = True
 
     baseline_duration = _duration_ms(baseline)
@@ -256,4 +294,5 @@ def compare_runs(
         faulted_task_success=faulted_success,
         continued_after_fault=continued,
         target_tool_retries=retries,
+        alternative_tool_calls=alternative_tool_calls,
     )

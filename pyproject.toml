@@ -1,20 +1,20 @@
 [project]
 name = "agentchaos"
 version = "0.0.1"
-description = "Trace-driven reliability testing for AI agents"
+description = "Trace-driven reliability testing for AI agents with controlled tool faults"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "pydantic>=2.10,<3",
-    "typer>=0.15,<1",
-    "rich>=13,<15",
-    "openai-agents>=0.23.1",
-]
+dependencies = ["pydantic>=2.10,<3"]
+
+[project.optional-dependencies]
+openai = ["openai-agents>=0.23.1"]
 
 [dependency-groups]
 dev = [
+    "openai-agents>=0.23.1",
     "pytest>=8,<10",
     "pytest-asyncio>=0.25,<2",
+    "rich>=13,<15",
     "ruff>=0.9,<1",
 ]
 

@@ -18,9 +18,15 @@ uv run ruff check .
 uv run pytest
 ```
 
+## Install and use as a library
+
+AgentChaos is not published to PyPI. From this checkout, install the framework-neutral core with `uv pip install .` or include the OpenAI adapter with `uv pip install '.[openai]'` in an isolated environment. The public API includes `Experiment`, `FaultSpec`, `ExperimentRunner`, `MultiRunRunner`, `TraceRecorder`, task evaluators, and JSON artifact exports. See the [Python API guide](docs/python-api.md) for complete installation and usage examples.
+
 ## First example
 
 The order-support example uses a local, hard-coded order lookup tool and makes a live model call.
+
+The [research assistant example](examples/research_assistant/README.md) demonstrates three local tools and exact structured-fact evaluation.
 
 ```sh
 uv sync

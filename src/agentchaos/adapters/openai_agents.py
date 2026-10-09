@@ -7,10 +7,18 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from agents import Agent, RunConfig, RunHooks, Runner
-from agents.items import ModelResponse, TResponseInputItem
-from agents.run_context import RunContextWrapper
-from agents.tool import FunctionTool, Tool
+try:
+    from agents import Agent, RunConfig, RunHooks, Runner
+    from agents.items import ModelResponse, TResponseInputItem
+    from agents.run_context import RunContextWrapper
+    from agents.tool import FunctionTool, Tool
+except ModuleNotFoundError as exc:
+    if exc.name == "agents" or (exc.name and exc.name.startswith("agents.")):
+        raise ImportError(
+            "OpenAIAgentsAdapter requires the optional OpenAI integration; "
+            "install agentchaos[openai]."
+        ) from exc
+    raise
 from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 
 from agentchaos.faults import FaultMatch, FaultMatcher

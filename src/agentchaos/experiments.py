@@ -35,6 +35,10 @@ class ExperimentRunner:
         expected_output: JsonValue | object = _UNSET,
         evaluator: TaskEvaluator | None = None,
     ) -> ExperimentOutcome:
+        if not callable(getattr(adapter, "run", None)):
+            raise TypeError(
+                "adapter must provide an async run(task, *, recorder, fault)"
+            )
         resolved_task = task if task is not None else experiment.task
         if not resolved_task:
             raise ValueError("experiment task is required")

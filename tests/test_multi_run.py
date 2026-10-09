@@ -241,7 +241,8 @@ async def test_default_three_repetitions_are_sequential_and_isolated() -> None:
         == 6
     )
     assert all(outcome.comparison.fault_triggered for outcome in report.outcomes)
-    assert report.confirmed_recoveries == 3
+    assert report.confirmed_recoveries == 0
+    assert report.unknown_recoveries == 3
     assert all(fault is not original.fault for _, fault in adapter.calls if fault)
     assert original.baseline_run_id == "template-baseline"
 
@@ -306,7 +307,8 @@ async def test_unexpected_baseline_error_stops_and_preserves_original() -> None:
     assert report.completed_repetitions == 1
     assert report.incomplete_pairs == 1
     assert report.not_started_repetitions == 1
-    assert report.confirmed_recoveries == 1
+    assert report.confirmed_recoveries == 0
+    assert report.unknown_recoveries == 1
     assert report.stop_reason == "error"
 
 

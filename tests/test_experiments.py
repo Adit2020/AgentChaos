@@ -409,7 +409,7 @@ async def test_runner_isolates_baseline_faulted_recorders_and_repeated_runs() ->
     assert first.faulted.run_id == "faulted-1"
     assert first.comparison.baseline_injected_failures == 0
     assert first.comparison.faulted_injected_failures == 1
-    assert first.comparison.recovered is True
+    assert first.comparison.recovered is None
     assert second.comparison.fault_triggered is True
     assert plan.task == TASK
 

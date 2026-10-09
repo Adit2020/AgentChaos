@@ -3,11 +3,11 @@
 import json
 import os
 import shutil
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import fields
 from datetime import UTC, datetime
 from pathlib import Path
-from collections.abc import Iterator
 from uuid import uuid4
 
 from agentchaos.experiments import ExperimentOutcome

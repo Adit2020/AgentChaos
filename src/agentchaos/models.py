@@ -177,6 +177,7 @@ class ComparisonResult(DomainModel):
     faulted_task_success: bool | None = None
     continued_after_fault: bool = False
     target_tool_retries: int = Field(default=0, ge=0)
+    alternative_tool_calls: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def check_run_ids(self) -> "ComparisonResult":
