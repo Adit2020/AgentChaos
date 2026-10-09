@@ -10,8 +10,10 @@ from rich.console import Console
 from rich.table import Table
 
 from agentchaos.adapters.openai_agents import OpenAIAgentsAdapter
+from agentchaos.artifacts import export_experiment, export_multi_run
 from agentchaos.experiments import ExperimentOutcome, ExperimentRunner
-from agentchaos.models import AgentRun, Experiment, FaultSpec
+from agentchaos.models import AgentRun, Experiment, FaultSpec, RunStatus
+from agentchaos.multi_run import MultiRunRunner, ReliabilityReport
 from agentchaos.tracing import TraceRecorder
 
 ORDERS = {
@@ -153,13 +155,155 @@ def show_comparison(console: Console, outcome: ExperimentOutcome) -> None:
     console.print(table)
 
 
+def show_multi_report(console: Console, report: ReliabilityReport) -> None:
+    def fraction(count: int, denominator: int, rate: float | None) -> str:
+        return (
+            f"{count}/{denominator} ({rate:.0%})"
+            if rate is not None
+            else f"{count}/{denominator} (unknown)"
+        )
+
+    def stat(value: float | None, *, unit: str = "") -> str:
+        return "unknown" if value is None else f"{value:+.1f}{unit}"
+
+    summary = Table(title="AgentChaos reliability summary")
+    summary.add_column("Metric")
+    summary.add_column("Value")
+    rows = [
+        ("Requested repetitions", str(report.requested_repetitions)),
+        ("Completed pairs", str(report.completed_repetitions)),
+        ("Incomplete pairs", str(report.incomplete_pairs)),
+        ("Failed pairs", str(report.failed_pairs)),
+        ("Not started", str(report.not_started_repetitions)),
+        ("Stop reason", report.stop_reason or "completed"),
+        (
+            "Faults triggered",
+            fraction(
+                report.triggered_faults,
+                report.completed_repetitions,
+                report.fault_trigger_rate,
+            ),
+        ),
+        ("Confirmed recoveries", str(report.confirmed_recoveries)),
+        ("Confirmed non-recoveries", str(report.confirmed_nonrecoveries)),
+        ("Unknown recoveries", str(report.unknown_recoveries)),
+        (
+            "Recovery among evaluable triggers",
+            fraction(
+                report.confirmed_recoveries,
+                report.evaluable_triggered_repetitions,
+                report.confirmed_recovery_rate,
+            ),
+        ),
+        (
+            "Recovery among requested",
+            fraction(
+                report.confirmed_recoveries,
+                report.requested_repetitions,
+                report.recovery_rate_requested,
+            ),
+        ),
+        (
+            "Baseline task success",
+            fraction(
+                report.baseline_task_successes,
+                report.baseline_evaluated_repetitions,
+                report.baseline_task_success_rate,
+            ),
+        ),
+        (
+            "Faulted task success",
+            fraction(
+                report.faulted_task_successes,
+                report.faulted_evaluated_repetitions,
+                report.faulted_task_success_rate,
+            ),
+        ),
+        (
+            "Extra model calls, mean / median",
+            f"{stat(report.average_extra_model_calls)} / "
+            f"{stat(report.median_extra_model_calls)} "
+            f"(n={report.model_call_observations})",
+        ),
+        (
+            "Extra tool calls, mean / median",
+            f"{stat(report.average_extra_tool_calls)} / "
+            f"{stat(report.median_extra_tool_calls)} "
+            f"(n={report.tool_call_observations})",
+        ),
+        (
+            "Latency delta, mean / median",
+            f"{stat(report.average_latency_delta_ms, unit=' ms')} / "
+            f"{stat(report.median_latency_delta_ms, unit=' ms')} "
+            f"(n={report.latency_observations})",
+        ),
+    ]
+    for row in rows:
+        summary.add_row(*row)
+    console.print(summary)
+
+    repetitions = Table(title="Repetition outcomes")
+    for column in (
+        "#",
+        "Baseline",
+        "Faulted",
+        "Fault fired",
+        "Recovered",
+        "Model Δ",
+        "Tool Δ",
+        "Latency Δ",
+    ):
+        repetitions.add_column(column)
+    for index, outcome in enumerate(report.outcomes, start=1):
+        comparison = outcome.comparison
+        recovery = (
+            comparison.recovered
+            if outcome.baseline.status == RunStatus.SUCCEEDED
+            and outcome.faulted.status == RunStatus.SUCCEEDED
+            else None
+        )
+        repetitions.add_row(
+            str(index),
+            outcome.baseline.status.value,
+            outcome.faulted.status.value,
+            str(comparison.fault_triggered).lower(),
+            "unknown" if recovery is None else str(recovery).lower(),
+            f"{comparison.model_call_delta:+d}",
+            f"{comparison.tool_call_delta:+d}",
+            (
+                f"{comparison.duration_delta_ms:+d} ms"
+                if comparison.duration_delta_ms is not None
+                else "unknown"
+            ),
+        )
+    for index in range(
+        report.completed_repetitions + 1, report.requested_repetitions + 1
+    ):
+        state = (
+            "incomplete"
+            if index <= report.completed_repetitions + report.incomplete_pairs
+            else "not started"
+        )
+        repetitions.add_row(str(index), state, "", "", "unknown", "", "", "")
+    console.print(repetitions)
+
+
 async def main() -> None:
     if not os.environ.get("OPENAI_API_KEY"):
         raise SystemExit("Set OPENAI_API_KEY before running this example.")
 
     compare = os.environ.get("AGENTCHAOS_COMPARE") == "1"
+    repetitions_text = os.environ.get("AGENTCHAOS_REPETITIONS")
+    multi_run = repetitions_text is not None
+    export_enabled = os.environ.get("AGENTCHAOS_EXPORT") == "1"
+    if compare and multi_run:
+        raise SystemExit(
+            "Choose AGENTCHAOS_COMPARE or AGENTCHAOS_REPETITIONS, not both."
+        )
+    if export_enabled and not (compare or multi_run):
+        raise SystemExit("AGENTCHAOS_EXPORT=1 requires comparison or multi-run mode.")
     fault_kind = os.environ.get("AGENTCHAOS_FAULT") or (
-        "tool_error" if compare else None
+        "tool_error" if compare or multi_run else None
     )
     use_json_tool = fault_kind == "malformed_tool_output"
     target_tool = "get_order_status_json" if use_json_tool else "get_order_status"
@@ -184,6 +328,60 @@ async def main() -> None:
     adapter = OpenAIAgentsAdapter(agent)
     task = "Where is order 123?"
     console = Console()
+    if multi_run:
+        max_text = os.environ.get("AGENTCHAOS_MAX_REPETITIONS")
+        if max_text is None:
+            raise SystemExit(
+                "Set AGENTCHAOS_MAX_REPETITIONS (1–20) before a multi-run experiment."
+            )
+        try:
+            repetitions = int(repetitions_text)
+            runner = MultiRunRunner(max_repetitions=int(max_text))
+            planned = runner.planned_agent_executions(repetitions)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid repetition configuration: {exc}") from exc
+        console.print(
+            f"Starting {repetitions} repetitions: {planned} agent executions "
+            f"({repetitions} baseline + {repetitions} faulted)."
+        )
+        experiment = Experiment(
+            experiment_id=uuid4().hex,
+            baseline_run_id=uuid4().hex,
+            task=task,
+            fault=selected_fault(fault_kind, target_tool),
+        )
+        try:
+            report = await runner.run(
+                adapter=adapter,
+                experiment=experiment,
+                repetitions=repetitions,
+                evaluator=order_answer_is_correct,
+            )
+        except (Exception, asyncio.CancelledError) as exc:
+            partial = getattr(exc, "agentchaos_multi_run_report", None)
+            if isinstance(partial, ReliabilityReport):
+                show_multi_report(console, partial)
+                if export_enabled:
+                    try:
+                        path = export_multi_run(partial, experiment=experiment)
+                    except Exception as export_error:
+                        console.print(f"Artifact export failed: {export_error}")
+                        exc.add_note(
+                            "AgentChaos could not export the partial report: "
+                            f"{type(export_error).__name__}"
+                        )
+                    else:
+                        console.print(f"Artifacts exported to: {path.resolve()}")
+            raise
+        show_multi_report(console, report)
+        if export_enabled:
+            try:
+                path = export_multi_run(report, experiment=experiment)
+            except Exception as export_error:
+                console.print(f"Artifact export failed: {export_error}")
+                raise
+            console.print(f"Artifacts exported to: {path.resolve()}")
+        return
     if compare:
         experiment = Experiment(
             experiment_id=uuid4().hex,
@@ -191,10 +389,34 @@ async def main() -> None:
             task=task,
             fault=selected_fault(fault_kind, target_tool),
         )
-        outcome = await ExperimentRunner().run(
-            adapter=adapter, experiment=experiment, evaluator=order_answer_is_correct
-        )
+        try:
+            outcome = await ExperimentRunner().run(
+                adapter=adapter,
+                experiment=experiment,
+                evaluator=order_answer_is_correct,
+            )
+        except (Exception, asyncio.CancelledError) as exc:
+            partial = getattr(exc, "agentchaos_experiment", None)
+            if export_enabled and isinstance(partial, ExperimentOutcome):
+                try:
+                    path = export_experiment(partial)
+                except Exception as export_error:
+                    console.print(f"Artifact export failed: {export_error}")
+                    exc.add_note(
+                        "AgentChaos could not export the partial experiment: "
+                        f"{type(export_error).__name__}"
+                    )
+                else:
+                    console.print(f"Artifacts exported to: {path.resolve()}")
+            raise
         show_comparison(console, outcome)
+        if export_enabled:
+            try:
+                path = export_experiment(outcome)
+            except Exception as export_error:
+                console.print(f"Artifact export failed: {export_error}")
+                raise
+            console.print(f"Artifacts exported to: {path.resolve()}")
         return
 
     recorder = TraceRecorder(run_id=uuid4().hex)
