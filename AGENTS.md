@@ -18,3 +18,24 @@ uv run pytest
 ```
 
 Use Serena to locate symbols and references before architectural edits; if indexing is unavailable, use its text search or `rg`. Use Context7 when current documentation for a non-OpenAI dependency is needed. Check current official OpenAI Developer Docs before relying on OpenAI Agents SDK behavior or changing its integration.
+
+## Automatic commits and pushes
+
+At the start of each new implementation task, check the current branch. If it is `main` or `master`, create an appropriately named feature branch before making any changes. Use a concise name with a task type prefix such as `feat/`, `fix/`, or `chore/`. If already on a feature branch, continue using it.
+
+After each successfully completed implementation task:
+
+1. Run all relevant available tests and validation checks.
+2. Review `git status` and `git diff`.
+3. Stage only files associated with the completed task.
+4. Create a concise Conventional Commit message.
+5. Push to the current feature branch on `origin`.
+6. Report the commit hash, branch, tests, and push status.
+
+Safety rules:
+
+- Never push directly to `main` or `master`.
+- Never force-push or discard unrelated work.
+- Never commit secrets, credentials, or `.env` files.
+- If tests fail or unexpected changes exist, stop and report.
+- Do not automatically merge or deploy.
