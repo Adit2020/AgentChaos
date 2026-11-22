@@ -34,6 +34,11 @@ class TraceRecorder:
         self._finished = False
 
     @property
+    def run_id(self) -> str:
+        """Return the identity assigned to this execution."""
+        return self._run_id
+
+    @property
     def events(self) -> tuple[RunEvent, ...]:
         """Return a snapshot that cannot mutate recorded events."""
 

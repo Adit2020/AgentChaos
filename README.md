@@ -22,6 +22,25 @@ uv run pytest
 
 AgentChaos is not published to PyPI. From this checkout, install the framework-neutral core with `uv pip install .` or include the OpenAI adapter with `uv pip install '.[openai]'` in an isolated environment. The public API includes `Experiment`, `FaultSpec`, `ExperimentRunner`, `MultiRunRunner`, `TraceRecorder`, task evaluators, and JSON artifact exports. See the [Python API guide](docs/python-api.md) for complete installation and usage examples.
 
+## CLI quickstart
+
+```sh
+uv sync
+uv run agentchaos validate examples/external_integration/experiment.json
+# Set OPENAI_API_KEY before running the live agent:
+uv run agentchaos run examples/external_integration/experiment.json
+```
+
+`uv sync` installs the separate local example adapter project for these commands. An installed AgentChaos wheel needs a developer adapter package installed separately.
+
+Add `--export` for versioned JSON artifacts or `--repetitions 3` for three sequential baseline/faulted pairs. See the [CLI guide](docs/cli.md) for configuration, trusted adapter loading, and exit codes.
+
+## Local Studio API
+
+The optional local FastAPI service lists and loads completed single-run and multi-run exports. It also exposes an explicit registry of trusted scenarios and can launch one baseline/faulted pair after live-cost acknowledgment. From the repository root, run `uv run --extra api --extra openai uvicorn --app-dir src agentchaos.api:create_app --factory --host 127.0.0.1 --port 8000 --workers 1`, then open `http://127.0.0.1:8000/docs`. Startup and discovery never call a model. Set `OPENAI_API_KEY` on the server before live submission and `AGENTCHAOS_ARTIFACT_ROOT` to use another artifacts directory. Jobs are in memory, have a bounded execution deadline, and use one execution slot. See the [API guide](docs/api.md) for contracts, cancellation limitations, and local security notes. This service requires authentication and further isolation before public deployment.
+
+AgentChaos Studio adds a React interface for experiment history and single-run trace inspection. With the backend running, use `cd frontend && npm ci && npm run dev`, then open `http://127.0.0.1:5173`. See the [Studio guide](frontend/README.md) for setup, verification, and current scope.
+
 ## First example
 
 The order-support example uses a local, hard-coded order lookup tool and makes a live model call.

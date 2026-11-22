@@ -121,6 +121,10 @@ asyncio.run(main())
 
 Inspect `AgentRun.events` for ordered `RunEvent`s. `EventKind` distinguishes run, model, and tool boundaries. `call_id` correlates each request/call with its response/result/error. `ComparisonResult` reports task success, fault delivery, continuation, retries, completed alternative-tool calls, recovery verdict, call deltas, and duration delta. `recovered=None` means the trace does not support a definite verdict; a correct final answer alone does not prove recovery.
 
+For the trusted ITSM benchmark, [pre-commit HTTP 503 recovery](itsm-phase-1c.md#recovery-classification) uses ordered service requests and independent SQLite evidence. The existing verdict fields are shared across fault kinds. Tool retry and injection counts still describe the SDK trace.
+
+The OpenAI adapter observes direct SDK-wrapped function invocations before the SDK applies its error policy. A tool result records `success=true` when the invocation returns and the adapter observes a completed result, or `success=false` for an observed failure or injected result. These values describe the invocation, not the business operation. SDK-handled failures still reach the model through the configured handler. The adapter uses `success=null` when it cannot establish the outcome, such as for opaque invokers, tools outside the prepared agent, or successful invocations followed by output guardrails. An explicit unknown result cannot establish recovery. Older traces without a `success` attribute retain their previous comparison behavior.
+
 ## Repetitions and export
 
 Inside `main` in the preceding example, reuse its adapter and experiment:
@@ -141,7 +145,7 @@ print(export_multi_run(report, experiment=experiment))
 
 Repetitions run sequentially. `max_repetitions` is required and capped at 20; each repetition executes a baseline and a faulted run. The returned `ReliabilityReport` contains individual outcomes and aggregate rates with explicit denominators. Both export functions write versioned JSON, accept an optional `root` directory, and return the created path.
 
-The complete [external integration example](../examples/external_integration/__main__.py) shows a structured answer, deterministic local tool, comparison inspection, and optional export.
+The complete [external integration example](../examples/external_integration/src/agentchaos_example_external/__init__.py) shows a structured answer, deterministic local tool, comparison inspection, and optional export.
 
 Run it from the repository root after `uv sync` and setting `OPENAI_API_KEY` (this makes live model requests):
 

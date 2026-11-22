@@ -186,7 +186,7 @@ async def test_normal_run_after_fault_has_no_injected_state(
 
     assert faulted.events[2].attributes["injected"] is True
     assert normal.output == "shipped"
-    assert normal.events[2].attributes == {"result_type": "str"}
+    assert normal.events[2].attributes == {"result_type": "str", "success": True}
     assert calls == ["order:123"]
 
 

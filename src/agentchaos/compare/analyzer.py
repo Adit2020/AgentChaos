@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pydantic import JsonValue
 
 from agentchaos.models import (
+    HTTP_503_BEFORE_COMMIT,
     AgentRun,
     ComparisonResult,
     EventKind,
@@ -142,7 +143,9 @@ def _completed_post_fault_tools(
         and terminals[call_id][0].kind == EventKind.TOOL_RESULT
         and terminals[call_id][0].sequence > call.sequence
         and terminals[call_id][0].attributes.get("injected") is not True
-        and terminals[call_id][0].attributes.get("success") is not False
+        # Legacy traces omit success. Explicit null means the adapter could
+        # not establish the outcome and cannot support a recovery claim.
+        and terminals[call_id][0].attributes.get("success", True) is True
     ]
 
 
@@ -163,6 +166,7 @@ def compare_runs(
     if evaluator is not None and expected_output is not _UNSET:
         raise ValueError("provide either expected_output or evaluator")
     if experiment.fault.fault_type not in {
+        HTTP_503_BEFORE_COMMIT,
         "tool_error",
         "tool_timeout",
         "malformed_tool_output",
@@ -202,11 +206,13 @@ def compare_runs(
             start=1,
         )
     }
+    # Service faults are evaluated separately from injected tool events.
     target_failure = next(
         (
             terminal
             for call, terminal in faulted_injected
-            if call.name == experiment.fault.target_tool
+            if experiment.fault.fault_type != HTTP_503_BEFORE_COMMIT
+            and call.name == experiment.fault.target_tool
             and terminal.attributes.get("fault_kind") == experiment.fault.fault_type
             and terminal.attributes.get("target_tool") == call.name
             and terminal.attributes.get("occurrence") == experiment.fault.occurrence
@@ -262,6 +268,17 @@ def compare_runs(
         elif faulted_success is True and continued and successful_retries > 0:
             recovered = True
 
+    fault_triggered = target_failure is not None
+    if experiment.fault.fault_type == HTTP_503_BEFORE_COMMIT:
+        from agentchaos.benchmarks.itsm.recovery import classify_precommit_503
+
+        fault_triggered, recovered = classify_precommit_503(
+            baseline,
+            faulted,
+            occurrence=experiment.fault.occurrence,
+            completed=_completed_lifecycle(baseline) and _completed_lifecycle(faulted),
+        )
+
     baseline_duration = _duration_ms(baseline)
     faulted_duration = _duration_ms(faulted)
     return ComparisonResult(
@@ -282,7 +299,7 @@ def compare_runs(
         ),
         baseline_injected_failures=len(baseline_injected),
         faulted_injected_failures=len(faulted_injected),
-        fault_triggered=target_failure is not None,
+        fault_triggered=fault_triggered,
         baseline_duration_ms=baseline_duration,
         faulted_duration_ms=faulted_duration,
         duration_delta_ms=(

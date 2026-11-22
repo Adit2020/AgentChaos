@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "task": "Is SKU-7 in stock?",
+  "adapter_factory": "agentchaos_example_external:create_adapter",
+  "fault": {
+    "fault_type": "tool_error",
+    "target_tool": "get_inventory",
+    "occurrence": 1,
+    "error_message": "Temporary inventory failure. Please retry."
+  },
+  "evaluation": {
+    "type": "exact",
+    "expected_output": {
+      "product_id": "SKU-7",
+      "in_stock": true
+    }
+  }
+}

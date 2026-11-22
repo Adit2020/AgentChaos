@@ -5,51 +5,26 @@ import os
 from uuid import uuid4
 
 from agents import Agent, function_tool
-from pydantic import BaseModel, ConfigDict
 from rich.console import Console
 from rich.table import Table
 
 from agentchaos.adapters.openai_agents import OpenAIAgentsAdapter
 from agentchaos.artifacts import export_experiment, export_multi_run
 from agentchaos.experiments import ExperimentOutcome, ExperimentRunner
-from agentchaos.models import AgentRun, Experiment, FaultSpec, RunStatus
+from agentchaos.models import Experiment, FaultSpec, RunStatus
 from agentchaos.multi_run import MultiRunRunner, ReliabilityReport
+from agentchaos.scenarios.order_support import (
+    ORDERS as ORDERS,
+)
+from agentchaos.scenarios.order_support import (
+    OrderStatusRecord as OrderStatusRecord,
+)
+from agentchaos.scenarios.order_support import (
+    get_order_status,
+    get_order_status_json,
+    order_answer_is_correct,
+)
 from agentchaos.tracing import TraceRecorder
-
-ORDERS = {
-    "123": "shipped, arriving Friday",
-    "456": "processing",
-    "789": "delivered",
-}
-
-
-class OrderStatusRecord(BaseModel):
-    """Expected JSON tool output: order_id, status, and nullable arrival_day."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    order_id: str
-    status: str
-    arrival_day: str | None
-
-
-def get_order_status(order_id: str) -> str:
-    """Return the local status of an order by its ID."""
-
-    return ORDERS.get(order_id, "order not found")
-
-
-def get_order_status_json(order_id: str) -> str:
-    """Return JSON matching OrderStatusRecord, with no extra fields."""
-
-    status, separator, arrival_day = ORDERS.get(order_id, "order not found").partition(
-        ", arriving "
-    )
-    return OrderStatusRecord(
-        order_id=order_id,
-        status=status,
-        arrival_day=arrival_day if separator else None,
-    ).model_dump_json()
 
 
 def selected_fault(kind: str, target_tool: str) -> FaultSpec:
@@ -83,17 +58,6 @@ def selected_fault(kind: str, target_tool: str) -> FaultSpec:
             },
         )
     raise ValueError(f"unsupported example fault: {kind}")
-
-
-def order_answer_is_correct(run: AgentRun) -> bool:
-    """Check the expected local status and arrival day without a model judge."""
-
-    answer = run.output
-    return (
-        isinstance(answer, str)
-        and "shipped" in answer.lower()
-        and "friday" in answer.lower()
-    )
 
 
 def show_comparison(console: Console, outcome: ExperimentOutcome) -> None:

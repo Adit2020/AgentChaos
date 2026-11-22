@@ -4,19 +4,32 @@ version = "0.0.1"
 description = "Trace-driven reliability testing for AI agents with controlled tool faults"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.10,<3"]
+dependencies = ["pydantic>=2.10,<3", "typer>=0.15,<1", "rich>=13,<15"]
+
+[project.scripts]
+agentchaos = "agentchaos.cli:app"
 
 [project.optional-dependencies]
 openai = ["openai-agents>=0.23.1"]
+api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
 
 [dependency-groups]
 dev = [
+    "agentchaos-example-external",
+    "fastapi>=0.115,<1",
+    "httpx>=0.27,<1",
     "openai-agents>=0.23.1",
     "pytest>=8,<10",
     "pytest-asyncio>=0.25,<2",
-    "rich>=13,<15",
     "ruff>=0.9,<1",
+    "uvicorn>=0.30,<1",
 ]
+
+[tool.uv.sources]
+agentchaos-example-external = { workspace = true }
+
+[tool.uv.workspace]
+members = ["examples/external_integration"]
 
 [build-system]
 requires = ["uv_build>=0.11,<0.13"]

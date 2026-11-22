@@ -1,0 +1,99 @@
+{
+  "exports": [
+    {
+      "export_id": "20261105T215942.299979Z-c0077d83b3f246918836cafec7a15c7a",
+      "artifact_type": "multi_run",
+      "exported_at": "2026-11-05T21:59:42.299979Z",
+      "manifest": {
+        "schema_version": 1,
+        "artifact_type": "multi_run",
+        "export_id": "20261105T215942.299979Z-c0077d83b3f246918836cafec7a15c7a",
+        "exported_at": "2026-11-05T21:59:42.299979Z",
+        "experiment": {
+          "experiment_id": "experiment-1",
+          "baseline_run_id": "baseline-1",
+          "fault": {
+            "fault_type": "tool_error",
+            "target_event_id": null,
+            "target_tool": "get_order_status",
+            "occurrence": 1,
+            "error_message": "Temporary failure",
+            "parameters": {}
+          },
+          "faulted_run_id": "faulted-1",
+          "task": "Where is order 123?"
+        },
+        "report_state": "error",
+        "summary_file": "summary.json",
+        "repetitions": [
+          {
+            "number": 1,
+            "state": "recorded",
+            "directory": "repetitions/001",
+            "experiment_id": "experiment-2",
+            "baseline_run_id": "baseline-2",
+            "faulted_run_id": "faulted-2",
+            "baseline_status": "succeeded",
+            "faulted_status": "succeeded",
+            "fault_triggered": true,
+            "recovered": null
+          },
+          {
+            "number": 2,
+            "state": "incomplete",
+            "directory": null,
+            "experiment_id": null,
+            "baseline_run_id": null,
+            "faulted_run_id": null,
+            "baseline_status": null,
+            "faulted_status": null,
+            "fault_triggered": null,
+            "recovered": null
+          },
+          {
+            "number": 3,
+            "state": "not_started",
+            "directory": null,
+            "experiment_id": null,
+            "baseline_run_id": null,
+            "faulted_run_id": null,
+            "baseline_status": null,
+            "faulted_status": null,
+            "fault_triggered": null,
+            "recovered": null
+          }
+        ]
+      }
+    },
+    {
+      "export_id": "20261105T215942.289533Z-c3b0d98ee8c1478ba90971cb424a574d",
+      "artifact_type": "experiment",
+      "exported_at": "2026-11-05T21:59:42.289533Z",
+      "manifest": {
+        "schema_version": 1,
+        "artifact_type": "experiment",
+        "export_id": "20261105T215942.289533Z-c3b0d98ee8c1478ba90971cb424a574d",
+        "exported_at": "2026-11-05T21:59:42.289533Z",
+        "experiment": {
+          "experiment_id": "experiment-1",
+          "baseline_run_id": "baseline-1",
+          "fault": {
+            "fault_type": "tool_error",
+            "target_event_id": null,
+            "target_tool": "get_order_status",
+            "occurrence": 1,
+            "error_message": "Temporary failure",
+            "parameters": {}
+          },
+          "faulted_run_id": "faulted-1",
+          "task": "Where is order 123?"
+        },
+        "baseline_status": "succeeded",
+        "faulted_status": "succeeded",
+        "fault_triggered": true,
+        "recovered": null,
+        "files": ["baseline.json", "faulted.json", "comparison.json"]
+      }
+    }
+  ]
+}

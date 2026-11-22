@@ -11,6 +11,8 @@ from pydantic import (
     model_validator,
 )
 
+HTTP_503_BEFORE_COMMIT = "http_503_before_commit"
+
 
 class DomainModel(BaseModel):
     """Reject unknown fields so malformed traces fail at the boundary."""
@@ -89,11 +91,13 @@ class AgentRun(DomainModel):
 
 
 class FaultSpec(DomainModel):
-    """A planned fault at a baseline event or a named tool occurrence.
+    """A planned fault for a tool, service operation, or baseline event.
 
     ``target_event_id`` retains the original trace-targeting contract. The
     deterministic tool faults instead use ``target_tool`` and ``occurrence``.
     ``parameters`` supplies timeout_ms or the malformed payload.
+    For ``http_503_before_commit``, the trusted adapter owns the service target
+    and ``occurrence`` selects the eligible request.
     """
 
     fault_type: str = Field(min_length=1)
@@ -105,7 +109,15 @@ class FaultSpec(DomainModel):
 
     @model_validator(mode="after")
     def check_target(self) -> "FaultSpec":
-        if self.fault_type in {
+        if self.fault_type == HTTP_503_BEFORE_COMMIT:
+            if (
+                self.target_event_id
+                or self.target_tool
+                or self.error_message
+                or self.parameters
+            ):
+                raise ValueError("http_503_before_commit accepts only occurrence")
+        elif self.fault_type in {
             "tool_error",
             "tool_timeout",
             "malformed_tool_output",
@@ -155,6 +167,8 @@ class ComparisonResult(DomainModel):
     Count deltas and duration delta are faulted minus baseline, so negative
     values represent a faulted run that used fewer calls or less time. A
     missing duration or unknown recovery is represented by None.
+    The configured fault determines the evidence for fault_triggered and
+    recovered. Tool retries and injected failure counts describe tool events.
     """
 
     experiment_id: str = Field(min_length=1)

@@ -1,0 +1,181 @@
+{
+  "export_id": "20261105T215942.289533Z-c3b0d98ee8c1478ba90971cb424a574d",
+  "artifact_type": "experiment",
+  "artifact": {
+    "manifest": {
+      "schema_version": 1,
+      "artifact_type": "experiment",
+      "export_id": "20261105T215942.289533Z-c3b0d98ee8c1478ba90971cb424a574d",
+      "exported_at": "2026-11-05T21:59:42.289533Z",
+      "experiment": {
+        "experiment_id": "experiment-1",
+        "baseline_run_id": "baseline-1",
+        "fault": {
+          "fault_type": "tool_error",
+          "target_event_id": null,
+          "target_tool": "get_order_status",
+          "occurrence": 1,
+          "error_message": "Temporary failure",
+          "parameters": {}
+        },
+        "faulted_run_id": "faulted-1",
+        "task": "Where is order 123?"
+      },
+      "baseline_status": "succeeded",
+      "faulted_status": "succeeded",
+      "fault_triggered": true,
+      "recovered": null,
+      "files": ["baseline.json", "faulted.json", "comparison.json"]
+    },
+    "baseline": {
+      "run_id": "baseline-1",
+      "task": "Where is order 123?",
+      "adapter": "fake",
+      "status": "succeeded",
+      "started_at": "2026-01-01T00:00:00Z",
+      "ended_at": "2026-01-01T00:00:01Z",
+      "events": [
+        {
+          "event_id": "baseline-1:0",
+          "sequence": 0,
+          "occurred_at": "2026-01-01T00:00:00Z",
+          "kind": "run.started",
+          "call_id": null,
+          "name": null,
+          "attributes": {}
+        },
+        {
+          "event_id": "baseline-1:1",
+          "sequence": 1,
+          "occurred_at": "2026-01-01T00:00:00.010000Z",
+          "kind": "tool.call",
+          "call_id": "tool-1",
+          "name": "get_order_status",
+          "attributes": {}
+        },
+        {
+          "event_id": "baseline-1:2",
+          "sequence": 2,
+          "occurred_at": "2026-01-01T00:00:00.020000Z",
+          "kind": "tool.result",
+          "call_id": "tool-1",
+          "name": null,
+          "attributes": {
+            "unicode": "caf\u00e9 \u2615",
+            "nested": {
+              "items": [
+                null,
+                true,
+                1.25,
+                {
+                  "quote": "a \"value\""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "event_id": "baseline-1:3",
+          "sequence": 3,
+          "occurred_at": "2026-01-01T00:00:01Z",
+          "kind": "run.completed",
+          "call_id": null,
+          "name": null,
+          "attributes": {}
+        }
+      ],
+      "output": {
+        "answer": "shipped"
+      }
+    },
+    "faulted": {
+      "run_id": "faulted-1",
+      "task": "Where is order 123?",
+      "adapter": "fake",
+      "status": "succeeded",
+      "started_at": "2026-01-01T00:00:00Z",
+      "ended_at": "2026-01-01T00:00:01Z",
+      "events": [
+        {
+          "event_id": "faulted-1:0",
+          "sequence": 0,
+          "occurred_at": "2026-01-01T00:00:00Z",
+          "kind": "run.started",
+          "call_id": null,
+          "name": null,
+          "attributes": {}
+        },
+        {
+          "event_id": "faulted-1:1",
+          "sequence": 1,
+          "occurred_at": "2026-01-01T00:00:00.010000Z",
+          "kind": "tool.call",
+          "call_id": "tool-1",
+          "name": "get_order_status",
+          "attributes": {}
+        },
+        {
+          "event_id": "faulted-1:2",
+          "sequence": 2,
+          "occurred_at": "2026-01-01T00:00:00.020000Z",
+          "kind": "tool.result",
+          "call_id": "tool-1",
+          "name": null,
+          "attributes": {
+            "unicode": "caf\u00e9 \u2615",
+            "nested": {
+              "items": [
+                null,
+                true,
+                1.25,
+                {
+                  "quote": "a \"value\""
+                }
+              ]
+            },
+            "injected": true,
+            "success": false,
+            "fault_kind": "tool_error",
+            "target_tool": "get_order_status",
+            "occurrence": 1
+          }
+        },
+        {
+          "event_id": "faulted-1:3",
+          "sequence": 3,
+          "occurred_at": "2026-01-01T00:00:01Z",
+          "kind": "run.completed",
+          "call_id": null,
+          "name": null,
+          "attributes": {}
+        }
+      ],
+      "output": {
+        "answer": "shipped"
+      }
+    },
+    "comparison": {
+      "experiment_id": "experiment-1",
+      "baseline_run_id": "baseline-1",
+      "faulted_run_id": "faulted-1",
+      "recovered": null,
+      "model_call_delta": -1,
+      "tool_call_delta": 1,
+      "duration_delta_ms": -120,
+      "baseline_model_calls": 2,
+      "faulted_model_calls": 1,
+      "baseline_tool_calls": 1,
+      "faulted_tool_calls": 2,
+      "baseline_injected_failures": 0,
+      "faulted_injected_failures": 0,
+      "fault_triggered": true,
+      "baseline_duration_ms": null,
+      "faulted_duration_ms": null,
+      "baseline_task_success": true,
+      "faulted_task_success": null,
+      "continued_after_fault": false,
+      "target_tool_retries": 0,
+      "alternative_tool_calls": 0
+    }
+  }
+}
